@@ -1,0 +1,24 @@
+model_list:
+  # Alias 1: For Aider (Clean Name)
+  - model_name: qwen-30b
+    litellm_params:
+      # [CRITICAL FIX] Added extra slash here: openai//models...
+      # This ensures LiteLLM sends "/models/..." to vLLM instead of "models/..."
+      model: openai//models/Qwen/Qwen3-30B-A3B-Instruct-FP8
+      api_base: http://host.docker.internal:8000/v1
+      api_key: sk-dummy-token
+
+  # Alias 2: For OpenClaw (Leading Slash)
+  - model_name: /qwen-30b
+    litellm_params:
+      # [CRITICAL FIX] Added extra slash here too
+      model: openai//models/Qwen/Qwen3-30B-A3B-Instruct-FP8
+      api_base: http://host.docker.internal:8000/v1
+      api_key: sk-dummy-token
+
+# Keep the drop_params fix from before
+litellm_settings:
+  drop_params: true
+
+general_settings:
+  master_key: sk-1234

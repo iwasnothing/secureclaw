@@ -1,0 +1,69 @@
+services:
+  # Sidecar 1: LiteLLM (High-Performance LLM Gateway)
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: agent-api-gateway
+    volumes:
+      - ./config/litellm_config.yaml:/app/config.yaml
+    extra_hosts:
+      # Maps 'host.docker.internal' to the DGX host IP
+      - "host.docker.internal:host-gateway"
+    networks:
+      - outside_world
+      - secure_enclave
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+
+  # Sidecar 2: Squid Proxy (Telegram Whitelist)
+  secure-proxy:
+    image: ubuntu/squid:latest
+    container_name: agent-firewall
+    volumes:
+      - ./config/squid.conf:/etc/squid/squid.conf
+    networks:
+      - outside_world
+      - secure_enclave
+
+  agent-box:
+    build: .
+    container_name: openclaw-aider-box
+    tty: true
+    stdin_open: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      # 1. Workspaces (Directories)
+      - ./workspace:/workspace
+      - ./skills:/root/.openclaw/skills
+      - ./config/openclaw:/root/.openclaw
+      - ./config/aider.conf.yml:/root/.aider.conf.yml
+    environment:
+      - OPENAI_API_BASE=http://litellm:4000/v1
+      - OPENAI_API_KEY=sk-1234 # Master key from litellm config
+      - AIDER_MODEL=openai/qwen-30b
+      - OPENCLAW_MODEL=openai/qwen-30b
+      # The agent MUST use the proxy to get out
+      - HTTP_PROXY=http://secure-proxy:3128
+      - HTTPS_PROXY=http://secure-proxy:3128
+      # Exclude local services
+      - NO_PROXY=localhost,127.0.0.1,litellm,0.0.0.0,::1
+      - NODE_OPTIONS="--dns-result-order=ipv4first"
+
+# Drop all capabilities for security
+    cap_drop:
+      - ALL
+    
+    networks:
+      - secure_enclave
+
+networks:
+  outside_world:
+    driver: bridge
+  secure_enclave:
+    driver: bridge
+    internal: true # THE TRAP: No internet access
+
